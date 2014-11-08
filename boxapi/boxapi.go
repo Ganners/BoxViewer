@@ -130,6 +130,40 @@ func (box *BoxApi) MultipartUpload(filePath string) (err error, docObj *Document
 	return nil, docObj
 }
 
+func (box *BoxApi) UpdateDocument(documentId string) (err error, docObj *DocumentObject) {
+
+	// Create our new request
+	mprequest, err := http.NewRequest(
+		"GET", box.DocumentUrl+"/"+documentId, nil)
+	mprequest.Header.Set("Authorization", "Token "+box.ApiKey)
+
+	if err != nil {
+		return err, nil
+	}
+
+	// Perform the request, grab response and close
+	client := &http.Client{}
+	mpresponse, err := client.Do(mprequest)
+	if err != nil {
+		return err, nil
+	}
+	defer mpresponse.Body.Close()
+
+	// Read the response into a byte slice
+	mybody, err := ioutil.ReadAll(mpresponse.Body)
+	if err != nil {
+		return err, nil
+	}
+
+	// Unmarshal it into our document object
+	err = json.Unmarshal(mybody, &docObj)
+	if err != nil {
+		return err, nil
+	}
+
+	return nil, docObj
+}
+
 func (box *BoxApi) GetDocument(documentId string) *DocumentObject {
 	return &DocumentObject{}
 }

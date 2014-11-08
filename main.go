@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 )
 
 type BoxStorage struct {
@@ -14,12 +15,12 @@ type BoxStorage struct {
 	fileLocation string
 }
 
-func (bs *BoxStorage) save() error {
+func (bs *BoxStorage) Save() error {
 	// @TODO - Implement save functionality
 	return nil
 }
 
-func (bs *BoxStorage) load() error {
+func (bs *BoxStorage) Load() error {
 	// @TODO - Implement load functionality
 	return nil
 }
@@ -31,27 +32,70 @@ type BoxViewerServer struct {
 	Port    string
 }
 
+// Starts an update loop, should:
+// + Update any DocumentObject that is queued, such that it ends up ready
+// + Update any expired SessionObjects
+func (bvs *BoxViewerServer) updateLoop() {
+
+	log.Println("Running update loop iteration\n")
+
+	for key, document := range bvs.Storage.Documents {
+
+		if document.Status != "done" {
+			log.Println("Status is %s, attempting to update", document.Status)
+			err, doc := bvs.API.UpdateDocument(document.Id)
+			if err != nil {
+				log.Println(err)
+			}
+			bvs.Storage.Documents[key] = doc
+			bvs.Storage.Save()
+		}
+	}
+
+	time.Sleep(10 * time.Second)
+	go bvs.updateLoop()
+}
+
+// Processes a file, should do the following:
+//
+// + Check if there's a session
+//   + If Yes: Show the viewer
+//   + If No: Create a channel and run the process
+//
+// + Wait on a read channel for the document to be ready, once it is ready
+//   then show the file (recursive?)
+func (bvs *BoxViewerServer) processFile(filePath string) {
+
+	session, sessionFound := bvs.Storage.Sessions[filePath]
+
+	if sessionFound {
+	}
+
+	document, found := bvs.Storage.Documents[filePath]
+	bvs.processFile(filePath)
+
+	if !found {
+
+		if err, document := bvs.API.MultipartUpload(filePath); err != nil {
+			log.Println(err)
+		} else {
+			bvs.Storage.Documents[filePath] = document
+			bvs.Storage.Save()
+		}
+	}
+}
+
 func (bvs *BoxViewerServer) viewHandler(w http.ResponseWriter, r *http.Request) {
+
 	r.ParseForm()
 
 	if filePaths, found := r.Form["url"]; found {
 
 		filePath := filePaths[0]
-		value, found := bvs.Storage.Documents[filePath]
-
-		if !found {
-			if err, document := bvs.API.MultipartUpload(filePath); err != nil {
-				log.Println(err)
-			} else {
-				bvs.Storage.Documents[filePath] = document
-				value = document
-			}
-		}
+		bvs.processFile(filePath)
 
 		fmt.Fprintf(w, "<h1>Loading box view for: %s</h1>", filePath)
-		fmt.Fprintf(w, "<h1>Value is: %v</h1>", value)
 	}
-
 }
 
 func (bvs *BoxViewerServer) infoHandler(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +108,17 @@ func (bvs *BoxViewerServer) infoHandler(w http.ResponseWriter, r *http.Request) 
 		fmt.Fprintf(w, "<li><strong>%s</strong>: %s", "Id", document.Id)
 		fmt.Fprintf(w, "<li><strong>%s</strong>: %s", "Status", document.Status)
 		fmt.Fprintf(w, "<li><strong>%s</strong>: %s", "CreatedAt", document.CreatedAt)
+		fmt.Fprintf(w, "</ul>")
+	}
+	fmt.Fprintf(w, "</ul>")
+
+	fmt.Fprintf(w, "<h2>Session Objects</h2>")
+	fmt.Fprintf(w, "<ul>")
+	for _, session := range bvs.Storage.Sessions {
+		fmt.Fprintf(w, "<ul>")
+		fmt.Fprintf(w, "<li><strong>%s</strong>: %s", "Type", session.Type)
+		fmt.Fprintf(w, "<li><strong>%s</strong>: %s", "Id", session.Id)
+		fmt.Fprintf(w, "<li><strong>%s</strong>: %s", "ExpiresAt", session.ExpiresAt)
 		fmt.Fprintf(w, "</ul>")
 	}
 	fmt.Fprintf(w, "</ul>")
@@ -81,18 +136,22 @@ func NewBoxViewerServer(addr string, port string, apiKey string, fileLocation st
 		Documents: make(map[string]*boxapi.DocumentObject),
 		Sessions:  make(map[string]*boxapi.SessionObject),
 	}
-	if err := storage.load(); err != nil {
+	if err := storage.Load(); err != nil {
 		log.Fatal("Error loading from storage")
 	}
 
 	api := boxapi.NewBoxApi(apiKey, fileLocation)
 
-	return &BoxViewerServer{
+	bvs := &BoxViewerServer{
 		API:     api,
 		Storage: storage,
 		Addr:    addr,
 		Port:    port,
 	}
+
+	go bvs.updateLoop()
+
+	return bvs
 }
 
 func main() {
@@ -107,12 +166,4 @@ func main() {
 	flag.Parse()
 	server := NewBoxViewerServer(*serverAddr, *serverPort, *apiKey, *fileLocation)
 	server.ListenAndServe()
-
-	// api := boxapi.NewBoxApi(*apiKey, *fileLocation)
-	// err, docObj := api.MultipartUpload(
-	// 	"http://www.mmta.co.uk/uploads/2014/09/26/102751_crucible_sept_14_final_v2.pdf")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// fmt.Printf("%v %v", err, docObj)
 }
