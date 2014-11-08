@@ -7,7 +7,7 @@ const location string = "/var/www/location"
 
 func TestKeyAndLocationIsSet(t *testing.T) {
 
-	box := NewBoxApi(key, location)
+	box, _ := NewBoxApi(key, location)
 	if box.ApiKey != key {
 		t.Errorf("Key not set error got %s, want %s", box.ApiKey, key)
 	}
