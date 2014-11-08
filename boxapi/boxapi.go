@@ -5,78 +5,109 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 )
 
 type BoxApi struct {
 	ApiKey       string
+	FileLocation string
 	MultipartUrl string
 	DocumentUrl  string
 	SessionUrl   string
 }
 
-func (box *BoxApi) generateUniqueFilename(filePath string) string {
-	hash := md5.Sum([]byte(filePath))
-	return hex.EncodeToString(hash[:])
+type LocalFile struct {
+	FileName string
+	File     *os.File
 }
 
-func (box *BoxApi) downloadFile(filePath string) (error, *os.File) {
+func (box *BoxApi) generateUniqueFilename(filePath string) string {
 
-	// Check if the file that has been passed exists and is reachable
-	resp, err := http.Get(filePath)
-	if err != nil {
-		return err, nil
+	// Grab the extension to add on to the end of the md5
+	ext := filepath.Ext(filePath)
+
+	// Md5 and append the extension on
+	hash := md5.Sum([]byte(filePath))
+	return hex.EncodeToString(hash[:]) + ext
+}
+
+func (box *BoxApi) downloadFile(filePath string) (*LocalFile, error) {
+
+	// Generate the filename from the filepath
+	localFilename := box.FileLocation + "/" + box.generateUniqueFilename(filePath)
+
+	if _, err := os.Stat(localFilename); os.IsNotExist(err) {
+		// Check if the file that has been passed exists and is reachable
+		resp, err := http.Get(filePath)
+		if err != nil {
+			return nil, err
+		}
+
+		defer resp.Body.Close()
+		contents, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		// Write the file to disk with a unique filename
+		err = ioutil.WriteFile(
+			localFilename,
+			contents,
+			0777)
+
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	fmt.Printf("%v", resp)
+	// Grab an os.File of the local file
+	localFile, err := os.Open(localFilename)
+	if err != nil {
+		return nil, err
+	}
 
-	return nil, nil
+	return &LocalFile{localFilename, localFile}, err
 }
 
 func (box *BoxApi) MultipartUpload(filePath string) (err error, docObj *DocumentObject) {
 
-	fmt.Printf("Hi all")
-
-	// Get file
-	err, file := box.downloadFile(filePath)
+	// Get file (os.File)
+	file, err := box.downloadFile(filePath)
 	if err != nil {
 		return err, nil
 	}
 
-	if err != nil {
-		return err, nil
-	}
-
-	return nil, nil
-
-	// Perform the upload
+	// Create a new form file
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("file", "document")
+	part, err := writer.CreateFormFile("file", filepath.Base(file.FileName))
 	if err != nil {
 		return err, nil
 	}
 
-	_, err = io.Copy(part, file)
+	// Copy file contents into our form file for upload
+	_, err = io.Copy(part, file.File)
 	if err != nil {
 		return err, nil
 	}
-
 	err = writer.Close()
+
+	// Create our new request
+	mprequest, err := http.NewRequest(
+		"POST", box.MultipartUrl, body)
+	mprequest.Header.Set("Authorization", "Token "+box.ApiKey)
+	mprequest.Header.Set("Content-Type", "multipart/form-data; boundary="+writer.Boundary())
+
 	if err != nil {
 		return err, nil
 	}
 
-	mprequest, err := http.NewRequest("POST", box.MultipartUrl, body)
-	if err != nil {
-		return err, nil
-	}
-
+	// Perform the request, grab response and close
 	client := &http.Client{}
 	mpresponse, err := client.Do(mprequest)
 	if err != nil {
@@ -84,11 +115,13 @@ func (box *BoxApi) MultipartUpload(filePath string) (err error, docObj *Document
 	}
 	defer mpresponse.Body.Close()
 
+	// Read the response into a byte slice
 	mybody, err := ioutil.ReadAll(mpresponse.Body)
 	if err != nil {
 		return err, nil
 	}
 
+	// Unmarshal it into our document object
 	err = json.Unmarshal(mybody, &docObj)
 	if err != nil {
 		return err, nil
@@ -105,10 +138,12 @@ func (box *BoxApi) GetSession(documentId string) *SessionObject {
 	return &SessionObject{}
 }
 
-func NewBoxApi(key string) *BoxApi {
+func NewBoxApi(key string, fileLocation string) *BoxApi {
+
 	return &BoxApi{
 		ApiKey:       key,
-		MultipartUrl: "https://upload.view-api.box.com",
+		FileLocation: fileLocation,
+		MultipartUrl: "https://upload.view-api.box.com/1/documents",
 		DocumentUrl:  "https://view-api.box.com/1/documents",
 		SessionUrl:   "https://view-api.box.com/1/sessions",
 	}
