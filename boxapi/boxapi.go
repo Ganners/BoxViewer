@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
@@ -130,7 +131,7 @@ func (box *BoxApi) MultipartUpload(filePath string) (err error, docObj *Document
 	return nil, docObj
 }
 
-func (box *BoxApi) UpdateDocument(documentId string) (err error, docObj *DocumentObject) {
+func (box *BoxApi) GetDocument(documentId string) (err error, docObj *DocumentObject) {
 
 	// Create our new request
 	mprequest, err := http.NewRequest(
@@ -164,12 +165,15 @@ func (box *BoxApi) UpdateDocument(documentId string) (err error, docObj *Documen
 	return nil, docObj
 }
 
-func (box *BoxApi) GetDocument(documentId string) *DocumentObject {
-	return &DocumentObject{}
-}
-
 func (box *BoxApi) GetSession(documentId string) *SessionObject {
 	return &SessionObject{}
+}
+
+func (box *BoxApi) GetViewerURL(sessionId string) string {
+
+	return fmt.Sprintf(
+		"https://view-api.box.com/1/sessions/%s/view?theme=light",
+		sessionId)
 }
 
 func NewBoxApi(key string, fileLocation string) *BoxApi {
