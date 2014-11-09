@@ -3,6 +3,7 @@ package main
 import (
 	"boxviewer/boxapi"
 	"log"
+	"time"
 )
 
 // Our storage object, allows us to store documents and sessions in
@@ -50,11 +51,29 @@ func (bw *BoxWorker) getBoxViewerURL(fileName string) string {
 	// is a document that exists.
 	if document, found := bw.Storage.Documents[fileName]; found {
 
+		// Check if the document is ready, if it isn't then we want to keep
+		// trying it until it is complete
+		for {
+			if document.Status == "done" {
+				break
+			}
+
+			// Time interval between attempts
+			time.Sleep(1 * time.Second)
+			_, document = bw.API.GetDocument(document.Id)
+		}
+
 		// If there is a document that exists, ask for a new session and
 		// create the URL
 		log.Println("Document found, generating new session for ", fileName)
-		bw.Storage.Sessions[fileName] = bw.API.GetSession(document.Id)
-		return bw.API.GetViewerURL(bw.Storage.Sessions[fileName].Id)
+		err, session := bw.API.GetSession(document.Id)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		bw.Storage.Sessions[fileName] = session
+		return bw.API.GetViewerURL(session.Id)
 	}
 
 	// If there is not a document that exists, it is new and so we must

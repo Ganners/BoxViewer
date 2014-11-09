@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -165,8 +166,52 @@ func (box *BoxApi) GetDocument(documentId string) (err error, docObj *DocumentOb
 	return nil, docObj
 }
 
-func (box *BoxApi) GetSession(documentId string) *SessionObject {
-	return &SessionObject{}
+func (box *BoxApi) GetSession(documentId string) (err error, sessObj *SessionObject) {
+
+	encoded, err := json.Marshal(struct {
+		DocumentId string `json:"document_id"`
+	}{
+		documentId,
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	body := bytes.NewBuffer(encoded)
+
+	// Create our new request
+	mprequest, err := http.NewRequest(
+		"POST", box.SessionUrl, body)
+	mprequest.Header.Set("Authorization", "Token "+box.ApiKey)
+	mprequest.Header.Set("Content-Type", "application/json")
+	mprequest.Header.Set("Content-Length", string(body.Len()))
+
+	if err != nil {
+		return err, nil
+	}
+
+	// Perform the request, grab response and close
+	client := &http.Client{}
+	mpresponse, err := client.Do(mprequest)
+	if err != nil {
+		return err, nil
+	}
+	defer mpresponse.Body.Close()
+
+	// Read the response into a byte slice
+	mybody, err := ioutil.ReadAll(mpresponse.Body)
+	if err != nil {
+		return err, nil
+	}
+
+	// Unmarshal it into our document object
+	err = json.Unmarshal(mybody, &sessObj)
+	if err != nil {
+		return err, nil
+	}
+
+	return nil, sessObj
 }
 
 func (box *BoxApi) GetViewerURL(sessionId string) string {
