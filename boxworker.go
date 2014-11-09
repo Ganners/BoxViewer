@@ -2,9 +2,14 @@ package main
 
 import (
 	"boxviewer/boxapi"
+	"bytes"
+	"encoding/gob"
 	"log"
+	"os"
 	"time"
 )
+
+const BoxStorageFileName = "box_storage_cache.bin"
 
 // Our storage object, allows us to store documents and sessions in
 // memory for quick retrieval. Should also allow caching to disk
@@ -17,13 +22,49 @@ type BoxStorage struct {
 // Saves our BoxStorage to disk, will store in the fileLocation that
 // the other files are also going to save into
 func (bs *BoxStorage) Save() error {
-	// @TODO - Implement save functionality
+
+	b := &bytes.Buffer{}
+	enc := gob.NewEncoder(b)
+	err := enc.Encode(bs)
+
+	if err != nil {
+		return err
+	}
+
+	log.Println("Saving file to", bs.fileLocation+"/"+BoxStorageFileName)
+
+	fh, err := os.OpenFile(bs.fileLocation+"/"+BoxStorageFileName,
+		os.O_CREATE|os.O_WRONLY, 0777)
+	defer fh.Close()
+
+	if err != nil {
+		return err
+	}
+
+	_, err = fh.Write(b.Bytes())
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
 // Reads our BoxStorage from disk (should it exist)
 func (bs *BoxStorage) Load() error {
-	// @TODO - Implement load functionality
+
+	log.Println("Loading file from", bs.fileLocation+"/"+BoxStorageFileName)
+
+	fh, err := os.Open(bs.fileLocation + "/" + BoxStorageFileName)
+	defer fh.Close()
+	if err != nil {
+		return err
+	}
+	dec := gob.NewDecoder(fh)
+	err = dec.Decode(&bs)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -73,6 +114,7 @@ func (bw *BoxWorker) getBoxViewerURL(fileName string) string {
 		}
 
 		bw.Storage.Sessions[fileName] = session
+		bw.Storage.Save()
 		return bw.API.GetViewerURL(session.Id)
 	}
 
@@ -84,6 +126,7 @@ func (bw *BoxWorker) getBoxViewerURL(fileName string) string {
 		log.Fatal(err)
 	}
 	bw.Storage.Documents[fileName] = document
+	bw.Storage.Save()
 
 	// May as well call ourself so we aren't rewriting lines of code
 	return bw.getBoxViewerURL(fileName)
@@ -103,13 +146,18 @@ func (bw *BoxWorker) Worker(jobs chan *Job, results chan *Job) {
 // Constructs a new BoxWorker with working API and storage
 func NewBoxWorker(apiKey string, fileLocation string) *BoxWorker {
 
+	bs := &BoxStorage{
+		Documents:    make(map[string]*boxapi.DocumentObject),
+		Sessions:     make(map[string]*boxapi.SessionObject),
+		fileLocation: fileLocation,
+	}
+
+	// Try and load the cache from disk
+	bs.Load()
+
 	bw := &BoxWorker{
-		API: boxapi.NewBoxApi(apiKey, fileLocation),
-		Storage: &BoxStorage{
-			Documents:    make(map[string]*boxapi.DocumentObject),
-			Sessions:     make(map[string]*boxapi.SessionObject),
-			fileLocation: fileLocation,
-		},
+		API:     boxapi.NewBoxApi(apiKey, fileLocation),
+		Storage: bs,
 	}
 	return bw
 }

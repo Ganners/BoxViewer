@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -77,6 +77,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// Pass all requests to our RequestMux
 	s.Requests <- request
 	path := <-request.ResultChan // Block
-	fmt.Println("Redirecting to", path)
+	log.Println("Redirecting to", path)
 	http.Redirect(w, req, path, 302)
 }
