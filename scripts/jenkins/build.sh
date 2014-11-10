@@ -1,4 +1,4 @@
-export GOPATH=$PWD/../../
+export GOPATH=$PWD
 export GOBIN=$GOPATH/bin
 
-go install
+go build
