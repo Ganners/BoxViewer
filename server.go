@@ -77,6 +77,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// Pass all requests to our RequestMux
 	s.Requests <- request
 	path := <-request.ResultChan // Block
-	log.Println("Redirecting to", path)
-	http.Redirect(w, req, path, 302)
+
+	if path != "" {
+		log.Println("Redirecting to", path)
+		http.Redirect(w, req, path, 302)
+	} else {
+		log.Println("Problem generating viewer")
+    http.ServeFile(w, req, "404.html")
+	}
 }

@@ -123,6 +123,7 @@ func (bw *BoxWorker) getBoxViewerURL(fileName string) string {
 	log.Println("No document found, creating one for ", fileName)
 	err, document := bw.API.MultipartUpload(fileName)
 	if err != nil {
+		log.Println(err)
 		return ""
 	}
 	bw.Storage.Documents[fileName] = document
