@@ -1,7 +1,7 @@
 package main
 
 import (
-	"boxviewer/boxapi"
+	"github.com/Ganners/BoxViewer/boxapi"
 	"bytes"
 	"encoding/gob"
 	"log"
