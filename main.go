@@ -16,6 +16,8 @@ func main() {
 		serverPort   = flag.String("port", "8080", "The port the server should run on")
 		apiKey       = flag.String("key", "", "Your key for the Box Viewer API")
 		fileLocation = flag.String("location", "", "Your destination to store downloaded files")
+		certFile     = flag.String("certFile", "", "The certFile")
+		keyFile      = flag.String("keyFile", "", "The server key")
 	)
 	flag.Parse()
 
@@ -31,7 +33,15 @@ func main() {
 	// Produce and start our server, passing in the requests channel
 	server := &Server{Requests: requests}
 
-	// Serve and do magic
-	log.Fatal(http.ListenAndServe(
-		*serverAddr+":"+*serverPort, server))
+	if *certFile == "" || *keyFile == "" {
+
+		// Serve and do magic
+		log.Fatal(http.ListenAndServe(
+			*serverAddr+":"+*serverPort, server))
+	} else {
+
+		// Serve over TLS
+		log.Fatal(http.ListenAndServeTLS(*serverAddr+":"+*serverPort,
+			*certFile, *keyFile, server))
+	}
 }
