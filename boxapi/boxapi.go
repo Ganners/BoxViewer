@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"errors"
 )
 
 type BoxApi struct {
@@ -127,6 +128,10 @@ func (box *BoxApi) MultipartUpload(filePath string) (err error, docObj *Document
 	err = json.Unmarshal(mybody, &docObj)
 	if err != nil {
 		return err, nil
+	}
+
+	if docObj.Type == "error" {
+		return errors.New("Document could not be created"), nil
 	}
 
 	return nil, docObj
